@@ -1,8 +1,10 @@
 package axion
 
 import (
+	axlog "axion/log"
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -11,7 +13,7 @@ import (
 type Client struct {
 	hub  *Hub
 	conn *websocket.Conn
-	send chan SendMessage
+	send chan WsMessage
 	room *Room
 }
 
@@ -19,22 +21,24 @@ func newClient(hub *Hub, conn *websocket.Conn) *Client {
 	return &Client{
 		hub:  hub,
 		conn: conn,
-		send: make(chan SendMessage),
+		send: make(chan WsMessage),
 		room: nil,
 	}
 }
 
 func (c *Client) readPump() {
 	defer func() {
+		axlog.Logln("unregister client")
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()
 	for {
 		msgType, message, err := c.conn.ReadMessage()
 		if err != nil {
-			log.Println("readPump error:", err)
+			axlog.Logln("readPump error: ", err)
 			break
 		}
+		axlog.Loglf("received message: type: %d, content: %s", msgType, string(message))
 
 		ctx := &MessageContext{
 			Message: message,
@@ -86,4 +90,13 @@ func (c *Client) writePump() {
 			}
 		}
 	}
+}
+
+func (c *Client) leaveRoom() {
+	if c.room == nil {
+		return
+	}
+	index := slices.Index(c.room.clients, c)
+	c.room.clients = slices.Delete(c.room.clients, index, index+1)
+	c.room = nil
 }

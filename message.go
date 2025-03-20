@@ -2,27 +2,26 @@ package axion
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/gorilla/websocket"
 )
 
 const ErrorMagicNumber int32 = 0xE3303
 
-type SendMessage struct {
+type WsMessage struct {
 	msgType int
 	content []byte
 }
 
-func newMessage(msgType int, message []byte) SendMessage {
-	return SendMessage{
+func newMessage(msgType int, message []byte) WsMessage {
+	return WsMessage{
 		msgType: msgType,
 		content: message,
 	}
 }
 
-func newTextMesssage(message []byte) SendMessage {
-	return SendMessage{
+func newTextMesssage(message []byte) WsMessage {
+	return WsMessage{
 		msgType: websocket.TextMessage,
 		content: message,
 	}
@@ -33,12 +32,16 @@ type MessageContext struct {
 	client  *Client
 }
 
-func (ctx *MessageContext) Broadcast(message []byte) {
-	ctx.client.hub.broadcast <- message
+func (ctx *MessageContext) SendMessage(msgType int, message []byte) {
+	ctx.client.send <- newMessage(msgType, message)
 }
 
-func (ctx *MessageContext) BroadcastRoom(message []byte) {
-	ctx.client.room.broadcast <- message
+func (ctx *MessageContext) Broadcast(msgType int, message []byte) {
+	ctx.client.hub.broadcast <- newMessage(msgType, message)
+}
+
+func (ctx *MessageContext) BroadcastRoom(msgType int, message []byte) {
+	ctx.client.room.broadcast <- newMessage(msgType, message)
 }
 
 func (ctx *MessageContext) SendPong(message []byte) {
@@ -60,11 +63,5 @@ func (ctx *MessageContext) JoinRoom(roomId string) error {
 }
 
 func (ctx *MessageContext) LeaveRoom() {
-	room := ctx.client.room
-	if room == nil {
-		return
-	}
-	index := slices.Index(room.clients, ctx.client)
-	room.clients = slices.Delete(room.clients, index, index+1)
-	ctx.client.room = nil
+	ctx.client.leaveRoom()
 }

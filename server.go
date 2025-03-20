@@ -20,7 +20,7 @@ func NewServer(port int) *Server {
 		pingHandlers:    make([]func(ctx *MessageContext), 0),
 	}
 
-	hub := newHub()
+	hub := newHub(s)
 	s.hub = hub
 	go hub.run()
 
@@ -41,16 +41,16 @@ func (s *Server) HandlePing(fun func(ctx *MessageContext)) {
 	s.pingHandlers = append(s.pingHandlers, fun)
 }
 
-func (s *Server) Broadcast(message []byte) {
-	s.hub.broadcast <- message
+func (s *Server) Broadcast(msgType int, message []byte) {
+	s.hub.broadcast <- newMessage(msgType, message)
 }
 
-func (s *Server) BroadcastRoom(roomId string, message []byte) error {
+func (s *Server) BroadcastRoom(roomId string, msgType int, message []byte) error {
 	room, exists := s.hub.rooms[roomId]
 	if !exists {
 		return fmt.Errorf("room does not exist")
 	}
-	room.broadcast <- message
+	room.broadcast <- newMessage(msgType, message)
 	return nil
 }
 

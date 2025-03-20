@@ -9,14 +9,14 @@ import (
 
 type Room struct {
 	id        string
-	broadcast chan []byte
+	broadcast chan WsMessage
 	clients   []*Client
 }
 
 func newRoom(id string) *Room {
 	return &Room{
 		id:        id,
-		broadcast: make(chan []byte),
+		broadcast: make(chan WsMessage),
 		clients:   make([]*Client, 0),
 	}
 }
