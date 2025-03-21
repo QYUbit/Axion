@@ -1,12 +1,16 @@
 package axion
 
 import (
-	"fmt"
+	"encoding/binary"
 
 	"github.com/gorilla/websocket"
 )
 
-const ErrorMagicNumber int32 = 0xE3303
+// TODO Better message sending
+
+const (
+	MessageMagicNumber uint32 = 0x13E55A7E
+)
 
 type WsMessage struct {
 	msgType int
@@ -27,41 +31,14 @@ func newTextMesssage(message []byte) WsMessage {
 	}
 }
 
-type MessageContext struct {
-	Message []byte
-	client  *Client
+type AxionMessage struct {
+	action uint32
+	p      []byte
 }
 
-func (ctx *MessageContext) SendMessage(msgType int, message []byte) {
-	ctx.client.send <- newMessage(msgType, message)
-}
-
-func (ctx *MessageContext) Broadcast(msgType int, message []byte) {
-	ctx.client.hub.broadcast <- newMessage(msgType, message)
-}
-
-func (ctx *MessageContext) BroadcastRoom(msgType int, message []byte) {
-	ctx.client.room.broadcast <- newMessage(msgType, message)
-}
-
-func (ctx *MessageContext) SendPong(message []byte) {
-	ctx.client.send <- newMessage(websocket.PongMessage, message)
-}
-
-func (ctx *MessageContext) GetRoomId() string {
-	return ctx.client.room.id
-}
-
-func (ctx *MessageContext) JoinRoom(roomId string) error {
-	room, exists := ctx.client.hub.rooms[roomId]
-	if !exists {
-		return fmt.Errorf("room does not exist")
+func isAxionMessage(b []byte) (AxionMessage, bool) {
+	if binary.BigEndian.Uint32(b[:4]) != MessageMagicNumber {
+		return AxionMessage{}, false
 	}
-	room.clients = append(room.clients, ctx.client)
-	ctx.client.room = room
-	return nil
-}
-
-func (ctx *MessageContext) LeaveRoom() {
-	ctx.client.leaveRoom()
+	return AxionMessage{binary.BigEndian.Uint32(b[4:8]), b[8:]}, true
 }

@@ -2,6 +2,7 @@ package axion
 
 import (
 	axlog "axion/log"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -13,18 +14,18 @@ func TestMain(m *testing.M) {
 	go func() {
 		server := NewServer(8080)
 
-		server.HandleMessage(func(ctx *MessageContext) {
-			axlog.Loglf("recieved a message: %s", ctx.Message)
-			ctx.SendMessage(1, []byte("test response"))
+		server.HandleUpgrade(func(w http.ResponseWriter, r *http.Request, connect func()) {
+			connect()
 		})
 
-		server.HandlePing(func(ctx *MessageContext) {
-			axlog.Loglf("received ping: %s", ctx.Message)
-			ctx.SendPong([]byte{})
-		})
+		server.HandleConnect(func(client *Client) {
+			client.HandleText(func(message string) {
+				axlog.Logln(message)
+			})
 
-		server.HandleClose(func(ctx *MessageContext) {
-			axlog.Loglf("received client close")
+			client.HandleClose(func(p []byte) {
+				axlog.Logln("client left")
+			})
 		})
 	}()
 

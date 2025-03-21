@@ -9,9 +9,11 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// TODO More mutex stuff
+
 type Hub struct {
 	server     *Server
-	clients    map[*Client]bool
+	clients    map[string]*Client
 	rooms      map[string]*Room
 	broadcast  chan WsMessage
 	register   chan *Client
@@ -22,10 +24,10 @@ type Hub struct {
 func newHub(server *Server) *Hub {
 	return &Hub{
 		broadcast:  make(chan WsMessage),
-		rooms:      map[string]*Room{},
+		rooms:      make(map[string]*Room),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		clients:    make(map[*Client]bool),
+		clients:    make(map[string]*Client),
 		server:     server,
 	}
 }
@@ -35,24 +37,27 @@ func (h *Hub) run() {
 		select {
 		case client := <-h.register:
 			h.mu.Lock()
-			h.clients[client] = true
+			axlog.Loglf("register client %s", client.id)
+			h.clients[client.id] = client
+			h.server.handlers.connectHandler(client)
 			h.mu.Unlock()
 		case client := <-h.unregister:
 			h.mu.Lock()
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
+			if _, ok := h.clients[client.id]; ok {
+				axlog.Loglf("unregister client %s", client.id)
+				delete(h.clients, client.id)
 				close(client.send)
-				client.leaveRoom()
+				client.handlers.disconnectHandler()
 			}
 			h.mu.Unlock()
 		case message := <-h.broadcast:
 			h.mu.Lock()
-			for client := range h.clients {
+			for clientID, client := range h.clients {
 				select {
 				case client.send <- message:
 				default:
 					close(client.send)
-					delete(h.clients, client)
+					delete(h.clients, clientID)
 				}
 			}
 			h.mu.Unlock()
@@ -79,16 +84,20 @@ var upgrader = websocket.Upgrader{
 }
 
 func (hub *Hub) handleNewConnection(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		fmt.Println(err)
-		return
+	connect := func() {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		axlog.Loglf("new client: %s", r.RemoteAddr)
+
+		client := newClient(hub, conn)
+		hub.register <- client
+
+		go client.readPump()
+		go client.writePump()
 	}
-	axlog.Loglf("new client: %s\n", r.Host)
 
-	client := newClient(hub, conn)
-	hub.register <- client
-
-	go client.readPump()
-	go client.writePump()
+	hub.server.handlers.upgradeHandler(w, r, connect)
 }
