@@ -16,7 +16,7 @@ type ServerHandlers struct {
 	pingHandlers    []func(p []byte)
 	pongHandlers    []func(p []byte)
 	upgradeHandler  func(w http.ResponseWriter, r *http.Request, connect func())
-	connectHandler  func(client *Client)
+	connectHandler  func(client *Client, r *http.Request)
 }
 
 type Server struct {
@@ -29,7 +29,7 @@ func NewServer(port int) *Server {
 		handlers: new(ServerHandlers),
 	}
 	s.handlers.upgradeHandler = func(w http.ResponseWriter, r *http.Request, connect func()) { connect() }
-	s.handlers.connectHandler = func(client *Client) {}
+	s.handlers.connectHandler = func(client *Client, r *http.Request) {}
 
 	hub := newHub(s)
 	s.hub = hub
@@ -96,6 +96,6 @@ func (s *Server) HandleUpgrade(fun func(w http.ResponseWriter, r *http.Request, 
 	s.handlers.upgradeHandler = fun
 }
 
-func (s *Server) HandleConnect(fun func(client *Client)) {
+func (s *Server) HandleConnect(fun func(client *Client, r *http.Request)) {
 	s.handlers.connectHandler = fun
 }

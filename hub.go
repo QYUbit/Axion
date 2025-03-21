@@ -11,12 +11,17 @@ import (
 
 // TODO More mutex stuff
 
+type RegisterClient struct {
+	client *Client
+	r      *http.Request
+}
+
 type Hub struct {
 	server     *Server
 	clients    map[string]*Client
 	rooms      map[string]*Room
 	broadcast  chan WsMessage
-	register   chan *Client
+	register   chan *RegisterClient
 	unregister chan *Client
 	mu         sync.Mutex
 }
@@ -25,7 +30,7 @@ func newHub(server *Server) *Hub {
 	return &Hub{
 		broadcast:  make(chan WsMessage),
 		rooms:      make(map[string]*Room),
-		register:   make(chan *Client),
+		register:   make(chan *RegisterClient),
 		unregister: make(chan *Client),
 		clients:    make(map[string]*Client),
 		server:     server,
@@ -35,11 +40,11 @@ func newHub(server *Server) *Hub {
 func (h *Hub) run() {
 	for {
 		select {
-		case client := <-h.register:
+		case reg := <-h.register:
 			h.mu.Lock()
-			axlog.Loglf("register client %s", client.id)
-			h.clients[client.id] = client
-			h.server.handlers.connectHandler(client)
+			axlog.Loglf("register client %s", reg.client.id)
+			h.clients[reg.client.id] = reg.client
+			h.server.handlers.connectHandler(reg.client, reg.r)
 			h.mu.Unlock()
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -93,7 +98,7 @@ func (hub *Hub) handleNewConnection(w http.ResponseWriter, r *http.Request) {
 		axlog.Loglf("new client: %s", r.RemoteAddr)
 
 		client := newClient(hub, conn)
-		hub.register <- client
+		hub.register <- &RegisterClient{client: client, r: r}
 
 		go client.readPump()
 		go client.writePump()

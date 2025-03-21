@@ -2,8 +2,10 @@ package axion
 
 import (
 	axlog "axion/log"
+	"context"
 	"fmt"
 	"log"
+	"net"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,6 +29,7 @@ type Client struct {
 	send     chan WsMessage
 	room     *Room
 	handlers *ClientHandlers
+	ctx      context.Context
 }
 
 func newClient(hub *Hub, conn *websocket.Conn) *Client {
@@ -171,6 +174,31 @@ func (c *Client) LeaveRoom() {
 	}
 	c.room.removeClient(c)
 	c.room = nil
+}
+
+func (c *Client) LocalAddr() net.Addr {
+	return c.conn.LocalAddr()
+}
+
+func (c *Client) RemoteAddr() net.Addr {
+	return c.conn.RemoteAddr()
+}
+
+func (c *Client) WithContext(ctx context.Context) *Client {
+	if ctx == nil {
+		panic("nil context")
+	}
+	c2 := new(Client)
+	*c2 = *c
+	c2.ctx = ctx
+	return c2
+}
+
+func (c *Client) Context() context.Context {
+	if c.ctx != nil {
+		return c.ctx
+	}
+	return context.Background()
 }
 
 func (c *Client) HandleMessage(fun func(message AxionMessage)) {
