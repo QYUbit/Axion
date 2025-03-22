@@ -29,6 +29,7 @@ type WsMessage struct {
 	content []byte
 }
 
+// Creates a new message
 func NewMessage(msgType int, message []byte) WsMessage {
 	return WsMessage{
 		msgType: msgType,
@@ -36,6 +37,7 @@ func NewMessage(msgType int, message []byte) WsMessage {
 	}
 }
 
+// Creates a new text message
 func NewTextMesssage(message string) WsMessage {
 	return WsMessage{
 		msgType: websocket.TextMessage,
@@ -43,6 +45,7 @@ func NewTextMesssage(message string) WsMessage {
 	}
 }
 
+// Creates a new binary message
 func NewBinaryMessage(message []byte) WsMessage {
 	return WsMessage{
 		msgType: websocket.BinaryMessage,
@@ -50,6 +53,7 @@ func NewBinaryMessage(message []byte) WsMessage {
 	}
 }
 
+// Creates a new ClientError message
 func NewClientErrorMessage(message string) WsMessage {
 	var p []byte
 	binary.BigEndian.AppendUint32(p, SigClientError)
@@ -60,6 +64,7 @@ func NewClientErrorMessage(message string) WsMessage {
 	}
 }
 
+// Creates a new ServerError message
 func NewServerErrorMessage(message string) WsMessage {
 	var p []byte
 	binary.BigEndian.AppendUint32(p, SigServerError)
@@ -70,6 +75,7 @@ func NewServerErrorMessage(message string) WsMessage {
 	}
 }
 
+// Creates a new RoomAbandoned message
 func NewRoomAbandonedMessage(roomId string) WsMessage {
 	var p []byte
 	binary.BigEndian.AppendUint32(p, SigRoomAbandoned)
@@ -80,6 +86,7 @@ func NewRoomAbandonedMessage(roomId string) WsMessage {
 	}
 }
 
+// Creates a new ClientLeftRoom message
 func NewClientLeftMessage(roomId string, clientId string) WsMessage {
 	var p []byte
 	binary.BigEndian.AppendUint32(p, SigClientLeft)
@@ -91,6 +98,7 @@ func NewClientLeftMessage(roomId string, clientId string) WsMessage {
 	}
 }
 
+// Creates a new ClientJoinedRoom message
 func NewClientJoinedMessage(roomId string, clientId string) WsMessage {
 	var p []byte
 	binary.BigEndian.AppendUint32(p, SigClientJoined)

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -35,6 +36,26 @@ func newHub(server *Server) *Hub {
 		clients:    make(map[string]*Client),
 		server:     server,
 	}
+}
+
+func (h *Hub) getClients() []*Client {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	var clients []*Client
+	for _, client := range h.clients {
+		clients = append(clients, client)
+	}
+	return clients
+}
+
+func (h *Hub) getRooms() []*Room {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	var rooms []*Room
+	for _, room := range h.rooms {
+		rooms = append(rooms, room)
+	}
+	return rooms
 }
 
 func (h *Hub) getClientById(id string) *Client {
@@ -111,15 +132,19 @@ var upgrader = websocket.Upgrader{
 }
 
 func (hub *Hub) handleNewConnection(w http.ResponseWriter, r *http.Request) {
+
 	connect := func() {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		clientId := uuid.New().String()
+		r.Header.Set("X-Axion-Session-Id", clientId)
+
+		conn, err := upgrader.Upgrade(w, r, http.Header{})
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 		axlog.Loglf("new client: %s", r.RemoteAddr)
 
-		client := newClient(hub, conn)
+		client := newClient(hub, conn, clientId)
 		hub.register <- &RegisterClient{client: client, r: r}
 
 		go client.readPump()

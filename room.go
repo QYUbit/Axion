@@ -35,32 +35,43 @@ func (r *Room) removeClient(client *Client) {
 	r.clients = slices.Delete(r.clients, index, index+1)
 }
 
-func (r *Room) GetId() string {
+// Returns the room id.
+func (r *Room) Id() string {
 	return r.id
 }
 
-func (r *Room) GetMembers() []*Client {
+// Returns all clients in the room
+func (r *Room) Members() []*Client {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.clients
 }
 
+// Broadcasts a message with the given websocket message type and content to all clients in the room.
 func (r *Room) Broadcast(msgType int, content []byte) {
 	r.broadcast <- NewMessage(msgType, content)
 }
 
+// Broadcasts a message to all clients in the room.
 func (r *Room) BroadcastMessage(message WsMessage) {
 	r.broadcast <- message
 }
 
+// Closes the room. Sends a RoomAbandoned message to all members and removes them from the room.
 func (r *Room) Close() {
-	close(r.broadcast)
+	r.BroadcastMessage(NewRoomAbandonedMessage(r.Id()))
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	for _, client := range r.clients {
-		client.send <- NewTextMesssage(("room abandoned"))
+	for _, c := range r.clients {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		index := slices.Index(c.rooms, r)
+		c.rooms = slices.Delete(c.rooms, index, index+1)
 	}
+
+	close(r.broadcast)
 
 	r.hub.mu.Lock()
 	defer r.hub.mu.Unlock()
