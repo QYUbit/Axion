@@ -8,6 +8,8 @@ import (
 	"github.com/google/uuid"
 )
 
+// TODO Add documentation
+
 type ServerHandlers struct {
 	upgradeHandler   func(w http.ResponseWriter, r *http.Request, connect func())
 	connectHandler   func(client *Client, r *http.Request)
@@ -50,8 +52,12 @@ func (s *Server) GetRoomById(id string) (*Room, bool) {
 	return room, room != nil
 }
 
-func (s *Server) Broadcast(msgType int, message []byte) {
-	s.hub.broadcastMessage(msgType, message)
+func (s *Server) Broadcast(msgType int, content []byte) {
+	s.hub.broadcastMessage(NewMessage(msgType, content))
+}
+
+func (s *Server) BroadcastMessage(message WsMessage) {
+	s.hub.broadcastMessage(message)
 }
 
 func (s *Server) CreateRoom() *Room {

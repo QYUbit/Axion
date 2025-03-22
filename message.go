@@ -3,12 +3,9 @@ package axion
 import (
 	axlog "axion/log"
 	"encoding/binary"
-	"fmt"
 
 	"github.com/gorilla/websocket"
 )
-
-// TODO Better message sending
 
 const (
 	BroadCastMessage = 0xB80ADCA5
@@ -19,22 +16,89 @@ const (
 	CloseRoomMessage = 0xC105E300
 )
 
+const (
+	SigClientError   = 0xC11E9E33
+	SigServerError   = 0x5E3F3E33
+	SigRoomAbandoned = 0xABAD0300
+	SigClientLeft    = 0x1EF70300
+	SigClientJoined  = 0x101ED300
+)
+
 type WsMessage struct {
 	msgType int
 	content []byte
 }
 
-func newMessage(msgType int, message []byte) WsMessage {
+func NewMessage(msgType int, message []byte) WsMessage {
 	return WsMessage{
 		msgType: msgType,
 		content: message,
 	}
 }
 
-func newTextMesssage(message []byte) WsMessage {
+func NewTextMesssage(message string) WsMessage {
 	return WsMessage{
 		msgType: websocket.TextMessage,
+		content: []byte(message),
+	}
+}
+
+func NewBinaryMessage(message []byte) WsMessage {
+	return WsMessage{
+		msgType: websocket.BinaryMessage,
 		content: message,
+	}
+}
+
+func NewClientErrorMessage(message string) WsMessage {
+	var p []byte
+	binary.BigEndian.AppendUint32(p, SigClientError)
+	p = append(p, []byte(message)...)
+	return WsMessage{
+		msgType: 0,
+		content: p,
+	}
+}
+
+func NewServerErrorMessage(message string) WsMessage {
+	var p []byte
+	binary.BigEndian.AppendUint32(p, SigServerError)
+	p = append(p, []byte(message)...)
+	return WsMessage{
+		msgType: 0,
+		content: p,
+	}
+}
+
+func NewRoomAbandonedMessage(roomId string) WsMessage {
+	var p []byte
+	binary.BigEndian.AppendUint32(p, SigRoomAbandoned)
+	p = append(p, []byte(roomId)...)
+	return WsMessage{
+		msgType: 0,
+		content: p,
+	}
+}
+
+func NewClientLeftMessage(roomId string, clientId string) WsMessage {
+	var p []byte
+	binary.BigEndian.AppendUint32(p, SigClientLeft)
+	p = append(p, []byte(roomId)...)
+	p = append(p, []byte(clientId)...)
+	return WsMessage{
+		msgType: 0,
+		content: p,
+	}
+}
+
+func NewClientJoinedMessage(roomId string, clientId string) WsMessage {
+	var p []byte
+	binary.BigEndian.AppendUint32(p, SigClientJoined)
+	p = append(p, []byte(roomId)...)
+	p = append(p, []byte(clientId)...)
+	return WsMessage{
+		msgType: 0,
+		content: p,
 	}
 }
 
@@ -65,7 +129,7 @@ func (c *Client) readMessage() error {
 			handler(message)
 		}
 	default:
-		c.send <- newTextMesssage(fmt.Appendf(nil, "Error: invalid message type: %d", msgType))
+		c.send <- NewClientErrorMessage("invalid message type")
 	}
 	return nil
 }
@@ -77,52 +141,77 @@ func (c *Client) readBinaryMessage(p []byte) {
 	switch int(binary.BigEndian.Uint32(special)) {
 	case BroadCastMessage:
 		if len(c.handlers.broadcastHandlers) == 0 {
-			c.hub.broadcastMessage(0, rest)
+			c.hub.broadcastMessage(NewBinaryMessage(rest))
 		}
 		for _, handler := range c.handlers.broadcastHandlers {
 			handler(p)
 		}
 	case RoomMessage:
+		roomId := string(rest[:36])
+		message := rest[36:]
 		if len(c.handlers.roomMessageHandlers) == 0 {
-			c.room.Broadcast(0, rest)
+			room, exists := c.GetRoom(roomId)
+			if !exists {
+				c.SendMessage(NewClientErrorMessage("room not found"))
+				return
+			}
+			room.Broadcast(0, message)
 		}
 		for _, handler := range c.handlers.roomMessageHandlers {
-			handler(p)
+			handler(roomId, message)
 		}
 	case JoinRoomMessage:
+		roomId := string(rest[:36])
 		if len(c.handlers.joinHandlers) == 0 {
-			room, exists := c.hub.server.GetRoomById(string(rest))
+			room, exists := c.hub.server.GetRoomById(roomId)
 			if !exists {
-				axlog.Loglf("room does not exist")
+				c.SendMessage(NewClientErrorMessage("room not found"))
+				return
 			}
 			c.JoinRoom(room)
+			room.BroadcastMessage(NewClientJoinedMessage(roomId, c.id))
 		}
 		for _, handler := range c.handlers.joinHandlers {
-			handler(p)
+			handler(roomId, rest[36:])
 		}
 	case LeaveRoomMessage:
+		roomId := string(rest[:36])
 		if len(c.handlers.leaveHandlers) == 0 {
-			c.LeaveRoom()
+			room, exists := c.GetRoom(roomId)
+			if !exists {
+				c.SendMessage(NewClientErrorMessage("room not found"))
+				return
+			}
+			c.LeaveRoom(room)
+			room.BroadcastMessage(NewClientLeftMessage(roomId, c.id))
 		}
 		for _, handler := range c.handlers.leaveHandlers {
-			handler(p)
+			handler(roomId, rest[36:])
 		}
 	case OpenRoomMessage:
+		joinAfterwards := rest[0] != 0
 		if len(c.handlers.openRoomHandlers) == 0 {
 			room := c.hub.server.CreateRoom()
-			if rest[0] != 0 {
+			if joinAfterwards {
 				c.JoinRoom(room)
 			}
 		}
 		for _, handler := range c.handlers.openRoomHandlers {
-			handler(p)
+			handler(joinAfterwards, rest[1:])
 		}
 	case CloseRoomMessage:
+		roomId := string(rest[:36])
 		if len(c.handlers.closeRoomHandlers) == 0 {
-			c.room.Close()
+			room, exists := c.GetRoom(roomId)
+			if !exists {
+				c.SendMessage(NewClientErrorMessage("room not found"))
+				return
+			}
+			room.BroadcastMessage(NewRoomAbandonedMessage(roomId))
+			room.Close()
 		}
 		for _, handler := range c.handlers.closeRoomHandlers {
-			handler(p)
+			handler(roomId, rest[36:])
 		}
 	default:
 		for _, handler := range c.handlers.binaryHandlers {

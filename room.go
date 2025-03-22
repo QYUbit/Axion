@@ -5,8 +5,6 @@ import (
 	"sync"
 )
 
-// TODO Room events
-
 type Room struct {
 	id        string
 	hub       *Hub
@@ -48,7 +46,11 @@ func (r *Room) GetMembers() []*Client {
 }
 
 func (r *Room) Broadcast(msgType int, content []byte) {
-	r.broadcast <- newMessage(msgType, content)
+	r.broadcast <- NewMessage(msgType, content)
+}
+
+func (r *Room) BroadcastMessage(message WsMessage) {
+	r.broadcast <- message
 }
 
 func (r *Room) Close() {
@@ -57,7 +59,7 @@ func (r *Room) Close() {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, client := range r.clients {
-		client.send <- newTextMesssage([]byte("room abandoned"))
+		client.send <- NewTextMesssage(("room abandoned"))
 	}
 
 	r.hub.mu.Lock()

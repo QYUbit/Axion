@@ -9,7 +9,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// TODO More mutex stuff
+// TODO Recover sessions
 
 type RegisterClient struct {
 	client *Client
@@ -49,8 +49,8 @@ func (h *Hub) getRoomById(id string) *Room {
 	return h.rooms[id]
 }
 
-func (h *Hub) broadcastMessage(msgType int, content []byte) {
-	h.broadcast <- newMessage(msgType, content)
+func (h *Hub) broadcastMessage(message WsMessage) {
+	h.broadcast <- message
 }
 
 func (h *Hub) run() {
