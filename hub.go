@@ -23,7 +23,7 @@ type Hub struct {
 	broadcast  chan WsMessage
 	register   chan *RegisterClient
 	unregister chan *Client
-	mu         sync.Mutex
+	mu         sync.RWMutex
 }
 
 func newHub(server *Server) *Hub {
@@ -37,21 +37,41 @@ func newHub(server *Server) *Hub {
 	}
 }
 
+func (h *Hub) getClientById(id string) *Client {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.clients[id]
+}
+
+func (h *Hub) getRoomById(id string) *Room {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.rooms[id]
+}
+
+func (h *Hub) broadcastMessage(msgType int, content []byte) {
+	h.broadcast <- newMessage(msgType, content)
+}
+
 func (h *Hub) run() {
 	for {
 		select {
 		case reg := <-h.register:
 			h.mu.Lock()
 			axlog.Loglf("register client %s", reg.client.id)
+
 			h.clients[reg.client.id] = reg.client
+
 			h.server.handlers.connectHandler(reg.client, reg.r)
 			h.mu.Unlock()
 		case client := <-h.unregister:
 			h.mu.Lock()
 			if _, ok := h.clients[client.id]; ok {
 				axlog.Loglf("unregister client %s", client.id)
+
 				delete(h.clients, client.id)
 				close(client.send)
+
 				client.handlers.disconnectHandler()
 			}
 			h.mu.Unlock()
@@ -67,17 +87,19 @@ func (h *Hub) run() {
 			}
 			h.mu.Unlock()
 		default:
-			h.mu.Lock()
+			h.mu.RLock()
 			for _, room := range h.rooms {
 				select {
 				case message := <-room.broadcast:
+					room.mu.RLock()
 					for _, client := range room.clients {
 						client.send <- message
 					}
+					room.mu.RUnlock()
 				default:
 				}
 			}
-			h.mu.Unlock()
+			h.mu.RUnlock()
 		}
 	}
 }

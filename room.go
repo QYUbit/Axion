@@ -12,7 +12,7 @@ type Room struct {
 	hub       *Hub
 	broadcast chan WsMessage
 	clients   []*Client
-	mu        sync.Mutex
+	mu        sync.RWMutex
 }
 
 func newRoom(id string, hub *Hub) *Room {
@@ -42,15 +42,20 @@ func (r *Room) GetId() string {
 }
 
 func (r *Room) GetMembers() []*Client {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.clients
 }
 
-func (r *Room) Broadcast(message WsMessage) {
-	r.broadcast <- message
+func (r *Room) Broadcast(msgType int, content []byte) {
+	r.broadcast <- newMessage(msgType, content)
 }
 
 func (r *Room) Close() {
 	close(r.broadcast)
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	for _, client := range r.clients {
 		client.send <- newTextMesssage([]byte("room abandoned"))
 	}

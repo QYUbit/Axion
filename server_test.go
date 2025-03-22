@@ -30,11 +30,15 @@ func TestMain(m *testing.M) {
 			*client = *client.WithContext(ctx)
 
 			client.HandleText(func(message string) {
-				axlog.Logln(message)
+				axlog.Loglf("text message from client %s: %s", client.GetId(), message)
 			})
 
 			client.HandleClose(func(p []byte) {
-				axlog.Logln("client left")
+				axlog.Loglf("client %s sent close", client.GetId())
+			})
+
+			client.HandleDisconnect(func() {
+				axlog.Loglf("client %s unregistered", client.GetId())
 			})
 		})
 	}()

@@ -3,7 +3,6 @@ package axion
 import (
 	axlog "axion/log"
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"time"
@@ -12,14 +11,21 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// TODO multiple rooms
+
 type ClientHandlers struct {
-	messageHandlers   []func(message AxionMessage)
-	textHandlers      []func(a string)
-	binaryHandlers    []func(p []byte)
-	closeHandlers     []func(p []byte)
-	pingHandlers      []func(p []byte)
-	pongHandlers      []func(p []byte)
-	disconnectHandler func()
+	textHandlers        []func(a string)
+	binaryHandlers      []func(p []byte)
+	closeHandlers       []func(p []byte)
+	pingHandlers        []func(p []byte)
+	pongHandlers        []func(p []byte)
+	broadcastHandlers   []func(p []byte)
+	roomMessageHandlers []func(p []byte)
+	joinHandlers        []func(p []byte)
+	leaveHandlers       []func(p []byte)
+	openRoomHandlers    []func(p []byte)
+	closeRoomHandlers   []func(p []byte)
+	disconnectHandler   func()
 }
 
 type Client struct {
@@ -51,65 +57,9 @@ func (c *Client) readPump() {
 		c.conn.Close()
 	}()
 	for {
-		msgType, message, err := c.conn.ReadMessage()
-		if err != nil {
+		if err := c.readMessage(); err != nil {
 			axlog.Logln("readPump error: ", err)
 			break
-		}
-		axlog.Loglf("received message: type: %d, content: %s", msgType, string(message))
-
-		c.conn.PongHandler()
-
-		switch msgType {
-		case websocket.BinaryMessage:
-			axMessage, ok := isAxionMessage(message)
-			if ok {
-				for _, handler := range c.hub.server.handlers.messageHandlers {
-					handler(axMessage)
-				}
-				for _, handler := range c.handlers.messageHandlers {
-					handler(axMessage)
-				}
-			} else {
-				for _, handler := range c.hub.server.handlers.binaryHandlers {
-					handler(message)
-				}
-				for _, handler := range c.handlers.binaryHandlers {
-					handler(message)
-				}
-			}
-		case websocket.TextMessage:
-			for _, handler := range c.hub.server.handlers.textHandlers {
-				handler(string(message))
-			}
-			for _, handler := range c.handlers.textHandlers {
-				handler(string(message))
-			}
-		case websocket.CloseMessage:
-			for _, handler := range c.hub.server.handlers.closeHandlers {
-				handler(message)
-			}
-			for _, handler := range c.handlers.closeHandlers {
-				handler(message)
-			}
-			return
-		case websocket.PingMessage:
-			for _, handler := range c.hub.server.handlers.pingHandlers {
-				handler(message)
-			}
-			for _, handler := range c.handlers.pingHandlers {
-				handler(message)
-			}
-		case websocket.PongMessage:
-			for _, handler := range c.hub.server.handlers.pongHandlers {
-				handler(message)
-			}
-			for _, handler := range c.handlers.pongHandlers {
-				handler(message)
-			}
-		default:
-			c.send <- newTextMesssage(fmt.Appendf(nil, "Error: invalid message type: %d", msgType))
-			return
 		}
 	}
 }
@@ -158,14 +108,9 @@ func (c *Client) Close() {
 	c.conn.Close()
 }
 
-func (c *Client) JoinRoom(roomId string) error {
-	room, exists := c.hub.rooms[roomId]
-	if !exists {
-		return fmt.Errorf("room does not exist")
-	}
+func (c *Client) JoinRoom(room *Room) {
 	room.addClient(c)
 	c.room = room
-	return nil
 }
 
 func (c *Client) LeaveRoom() {
@@ -201,10 +146,6 @@ func (c *Client) Context() context.Context {
 	return context.Background()
 }
 
-func (c *Client) HandleMessage(fun func(message AxionMessage)) {
-	c.handlers.messageHandlers = append(c.handlers.messageHandlers, fun)
-}
-
 func (c *Client) HandleText(fun func(a string)) {
 	c.handlers.textHandlers = append(c.handlers.textHandlers, fun)
 }
@@ -223,6 +164,30 @@ func (c *Client) HandlePing(fun func(p []byte)) {
 
 func (c *Client) HandlePong(fun func(p []byte)) {
 	c.handlers.pongHandlers = append(c.handlers.pongHandlers, fun)
+}
+
+func (c *Client) HandleBroadcast(fun func(p []byte)) {
+	c.handlers.broadcastHandlers = append(c.handlers.pongHandlers, fun)
+}
+
+func (c *Client) HandleRoomMessage(fun func(p []byte)) {
+	c.handlers.roomMessageHandlers = append(c.handlers.pongHandlers, fun)
+}
+
+func (c *Client) HandleJoin(fun func(p []byte)) {
+	c.handlers.joinHandlers = append(c.handlers.pongHandlers, fun)
+}
+
+func (c *Client) HandleLeave(fun func(p []byte)) {
+	c.handlers.leaveHandlers = append(c.handlers.pongHandlers, fun)
+}
+
+func (c *Client) HandleOpenRoom(fun func(p []byte)) {
+	c.handlers.openRoomHandlers = append(c.handlers.pongHandlers, fun)
+}
+
+func (c *Client) HandleCloseRoom(fun func(p []byte)) {
+	c.handlers.closeRoomHandlers = append(c.handlers.pongHandlers, fun)
 }
 
 func (c *Client) HandleDisconnect(fun func()) {
