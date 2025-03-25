@@ -33,6 +33,60 @@ func TestMain(m *testing.M) {
 				axlog.Loglf("text message from client %s: %s", client.Id(), message)
 			})
 
+			client.HandleBinary(func(p []byte) {
+				axlog.Loglf("message from client %s: %s", client.Id(), p)
+			})
+
+			client.HandleBroadcast(func(p []byte) {
+				axlog.Logln("recieved broadcast (not allowed)")
+			})
+
+			client.HandleOpenRoom(func(joinAfterwards bool, rest []byte) {
+				room := server.CreateRoom()
+				if joinAfterwards {
+					client.JoinRoom(room)
+				}
+			})
+
+			client.HandleLeave(func(roomId string, rest []byte) {
+				room, exists := client.GetRoom(roomId)
+				if !exists {
+					client.SendMessage(NewClientErrorMessage("room not found"))
+					return
+				}
+				client.LeaveRoom(room)
+			})
+
+			client.HandleCloseRoom(func(roomId string, rest []byte) {
+				room, exists := client.GetRoom(roomId)
+				if !exists {
+					client.SendMessage(NewClientErrorMessage("room not found"))
+					return
+				}
+				room.Close()
+			})
+
+			client.HandleRoomMessage(func(roomId string, message []byte) {
+				room, exists := client.GetRoom(roomId)
+				if !exists {
+					client.SendMessage(NewClientErrorMessage("room not found"))
+					return
+				}
+				room.Broadcast(0, message)
+			})
+
+			client.HandleClose(func(p []byte) {
+				axlog.Loglf("close message received from client %s", client.Id())
+			})
+
+			client.HandlePing(func(p []byte) {
+				axlog.Loglf("ping message received from client %s", client.Id())
+			})
+
+			client.HandlePong(func(p []byte) {
+				axlog.Loglf("pong message received from client %s", client.Id())
+			})
+
 			client.HandleClose(func(p []byte) {
 				axlog.Loglf("client %s sent close", client.Id())
 			})

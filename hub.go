@@ -132,10 +132,8 @@ var upgrader = websocket.Upgrader{
 }
 
 func (hub *Hub) handleNewConnection(w http.ResponseWriter, r *http.Request) {
-
 	connect := func() {
 		clientId := uuid.New().String()
-		r.Header.Set("X-Axion-Session-Id", clientId)
 
 		conn, err := upgrader.Upgrade(w, r, http.Header{})
 		if err != nil {
@@ -149,6 +147,8 @@ func (hub *Hub) handleNewConnection(w http.ResponseWriter, r *http.Request) {
 
 		go client.readPump()
 		go client.writePump()
+
+		client.SendMessage(NewInitMessage(clientId))
 	}
 
 	hub.server.handlers.upgradeHandler(w, r, connect)

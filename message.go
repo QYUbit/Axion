@@ -8,6 +8,7 @@ import (
 )
 
 const (
+	StatusMessage    = 0x57A7513E
 	BroadCastMessage = 0xB80ADCA5
 	RoomMessage      = 0x5E14D300
 	JoinRoomMessage  = 0x10114300
@@ -17,6 +18,7 @@ const (
 )
 
 const (
+	SigInit          = 0x11411413
 	SigClientError   = 0xC11E9E33
 	SigServerError   = 0x5E3F3E33
 	SigRoomAbandoned = 0xABAD0300
@@ -50,6 +52,16 @@ func NewBinaryMessage(message []byte) WsMessage {
 	return WsMessage{
 		msgType: websocket.BinaryMessage,
 		content: message,
+	}
+}
+
+func NewInitMessage(clientId string) WsMessage {
+	var p []byte
+	binary.BigEndian.AppendUint32(p, SigInit)
+	p = append(p, []byte(clientId)...)
+	return WsMessage{
+		msgType: 0,
+		content: p,
 	}
 }
 
@@ -177,7 +189,6 @@ func (c *Client) readBinaryMessage(p []byte) {
 				return
 			}
 			c.JoinRoom(room)
-			room.BroadcastMessage(NewClientJoinedMessage(roomId, c.id))
 		}
 		for _, handler := range c.handlers.joinHandlers {
 			handler(roomId, rest[36:])
@@ -191,7 +202,6 @@ func (c *Client) readBinaryMessage(p []byte) {
 				return
 			}
 			c.LeaveRoom(room)
-			room.BroadcastMessage(NewClientLeftMessage(roomId, c.id))
 		}
 		for _, handler := range c.handlers.leaveHandlers {
 			handler(roomId, rest[36:])
@@ -215,15 +225,28 @@ func (c *Client) readBinaryMessage(p []byte) {
 				c.SendMessage(NewClientErrorMessage("room not found"))
 				return
 			}
-			room.BroadcastMessage(NewRoomAbandonedMessage(roomId))
 			room.Close()
 		}
 		for _, handler := range c.handlers.closeRoomHandlers {
 			handler(roomId, rest[36:])
 		}
+	case StatusMessage:
+		_ = rest[0] != 0
 	default:
 		for _, handler := range c.handlers.binaryHandlers {
 			handler(p)
 		}
 	}
 }
+
+// Client				Server
+//	 |	   Http Upgrade    |
+//	 |-------------------->|
+//	 |<--------------------|
+//	 |					   |
+//	 |		   Init		   |
+//	 |-------------------->|
+//	 |					   |
+//	 |		  Status	   |
+//	 |<--------------------|
+//	 |					   |

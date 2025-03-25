@@ -26,11 +26,13 @@ func (r *Room) addClient(client *Client) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.clients = append(r.clients, client)
+	r.BroadcastMessage(NewClientJoinedMessage(r.id, client.id))
 }
 
 func (r *Room) removeClient(client *Client) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.BroadcastMessage(NewClientLeftMessage(r.id, client.id))
 	index := slices.Index(r.clients, client)
 	r.clients = slices.Delete(r.clients, index, index+1)
 }
